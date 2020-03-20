@@ -25,6 +25,7 @@ library(ggplot2)
 library(taxonomizr)
 library(dplyr)
 library(forcats)
+library(tibble)
 
 Sys.setenv(PATH=paste(Sys.getenv("PATH"), "/share/pkg.7/blast+/2.7.1/install/bin", sep=":"))
 Sys.setenv(PATH=paste(Sys.getenv("PATH"), "/share/pkg.7/sratoolkit/2.9.2/install/bin/", sep=":"))
@@ -79,7 +80,58 @@ readMergeOH = sread(dnaMergeOH, id=id(dnaMergeOH))
 
 
 #This will take a long time. Run once and save environment!
-clS <- predict(bl, readMergeS, BLAST_args = '-num_threads 12 -evalue 1e-100') #swamp
-clOH <- predict(bl, readMergeOH, BLAST_args = '-num_threads 12 -evalue 1e-100') #O'Hara
+#clS <- predict(bl, readMergeS, BLAST_args = '-num_threads 12 -evalue 1e-100') #swamp
+#clOH <- predict(bl, readMergeOH, BLAST_args = '-num_threads 12 -evalue 1e-100') #O'Hara
+
+#load the taxonomy database files 'nodes' and 'names'
+taxaNodes<-read.nodes.sql("/projectnb/ct-shbioinf/taxonomy/data/nodes.dmp")
+taxaNames<-read.names.sql("/projectnb/ct-shbioinf/taxonomy/data/names.dmp")
+# Search the taxonomy by accession ID #
+
+accidS = as.character(clS$SubjectID) # accession IDs of BLAST hits
+accidOH = as.character(clOH$SubjectID)
+
+idS<-accessionToTaxa(accidS,'/projectnb/ct-shbioinf/taxonomy/data/accessionTaxa.sql')
+idOH<-accessionToTaxa(accidOH,'/projectnb/ct-shbioinf/taxonomy/data/accessionTaxa.sql')
+
+# displays the taxonomic names from each ID #
+taxlistS=getTaxonomy(idS, taxaNodes, taxaNames)
+taxlistOH=getTaxonomy(idOH, taxaNodes, taxaNames)
+
+cltaxS=cbind(clS,taxlistS)
+cltaxOH=cbind(clOH,taxlistOH)
+
+#memory reduction
+# remove(taxlistS)
+# remove(taxlistOH)
+
+### Saved data as /data/Env1.RData
+
+topgenera = cltaxS %>%
+  group_by(genus) %>% 
+  #top_n(n=1, wt=(Bits)) %>%
+  #group_by(species) %>% 
+  #group_by(genus) %>%
+  summarize(count=n()) #%>% 
+#arrange(desc(count))
+head(arrange(topgenera, desc(count)),n=10)
+
+cltaxS_name = rownames_to_column(cltaxS,var="readID")
+HitsQIDS = cltaxS_name %>%
+  group_by(QueryID) %>%
+  #filter(is.na(genus)) #%>%
+  
+  #summarize(count=n())
+  #filter(is.na(genus)) #%>%
+  #arrange(desc(Bits))
+
+#HitsNAS = HitsQIDS %>%
+  
+
+
+HitsNAOH = cltaxOH %>%
+  filter(is.na(genus)) %>%
+  arrange(desc(Bits))
+
 
 
