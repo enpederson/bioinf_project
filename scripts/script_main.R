@@ -26,6 +26,14 @@ library(taxonomizr)
 library(dplyr)
 library(forcats)
 library(tibble)
+library(tidyr)
+library(stringr)
+library(ape)
+library(Biostrings)
+library(DECIPHER)
+
+options(scipen=999, digits=1) 
+
 
 Sys.setenv(PATH=paste(Sys.getenv("PATH"), "/share/pkg.7/blast+/2.7.1/install/bin", sep=":"))
 Sys.setenv(PATH=paste(Sys.getenv("PATH"), "/share/pkg.7/sratoolkit/2.9.2/install/bin/", sep=":"))
@@ -118,20 +126,111 @@ head(arrange(topgenera, desc(count)),n=10)
 
 cltaxS_name = rownames_to_column(cltaxS,var="readID")
 HitsQIDS = cltaxS_name %>%
-  group_by(QueryID) %>%
-  #filter(is.na(genus)) #%>%
+  group_by(QueryID)
   
-  #summarize(count=n())
-  #filter(is.na(genus)) #%>%
-  #arrange(desc(Bits))
+HitsQIDNAS = cltaxS_name %>%
+  filter(is.na(genus))  %>%
+  group_by(QueryID)
+  
+# filter if QueryID group has only genus=NA
+HitsQID_group_S = cltaxS %>%
+  filter(!is.na(genus)) %>% # get rid of NA genera
+  group_by(QueryID) %>% #group
+  summarize(count=n())
 
-#HitsNAS = HitsQIDS %>%
-  
+#Find missing QueryIDs
+lenS = lengths(HitsQID_group_S) 
+seq1S = seq(1:lenS[1])
+
+#make artificial list with length of HitsQID_group_S
+regexp <- "[[:digit:]]+"
+seq2S = str_extract(HitsQID_group_S[[1,]], regexp)
+
+missingintS = setdiff(seq1S,seq2S) #QueryIDs that have no matches
+missingS = paste("Query_", sep="", missingintS)
+NAreadsS = readMergeS[missingintS] #READS OBJECT WITH NO BLAST HITS
 
 
 HitsNAOH = cltaxOH %>%
   filter(is.na(genus)) %>%
   arrange(desc(Bits))
 
+# filter if QueryID group has only genus=NA
+HitsQID_group_OH = cltaxOH %>%
+  filter(!is.na(genus)) %>% # get rid of NA genera
+  group_by(QueryID) %>% #group
+  summarize(count=n())
 
+#Find missing QueryIDs
+lenOH = lengths(HitsQID_group_OH) 
+seq1OH = seq(1:lenOH[1])
+
+#make artificial list with length of HitsQID_group_S
+regexp <- "[[:digit:]]+"
+seq2OH = str_extract(HitsQID_group_OH[[1,]], regexp)
+
+missingintOH = setdiff(seq1OH,seq2OH) #QueryIDs that have no matches
+missingOH = paste("Query_", sep="", missingintOH)
+NAreadsOH = readMergeS[missingintOH]
+
+#Complexity Analysis
+complexS = dustyScore(NAreadsS)
+complexdfS = as.data.frame(complexS)
+complexdfS_full = cbind(NAreadsS,complexdfS)
+
+ggplot(data = complexdfS, aes(x = complexS)) +
+  ggtitle("Complexity Scores of Dark Matter from Swamp samples") +
+  xlab("DUST complexity score") +
+  geom_histogram(bins = 250) +
+  scale_x_log10()
+
+#sequester out low and high complexity reads
+complexdfS_high = complexdfS_full %>%
+  filter(complexS >= 5000)
+
+complexdfS_low = complexdfS_full %>%
+  filter(complexS < 5000)
+
+
+complexOH = dustyScore(NAreadsOH)
+complexdfOH = as.data.frame(complexOH)
+
+ggplot(data = complexdfOH, aes(x = complexOH)) +
+  ggtitle("Complexity Scores of Dark Matter from O'Hara samples") +
+  xlab("DUST complexity score") +
+  geom_histogram(bins = 250) +
+  scale_x_log10()
+
+#Multiple alignments ############
+
+pause()
+# DNA_alignment_S <- AlignSeqs(NAreadsS, processors=12)
+# writeXStringSet(DNA_alignment_S, file="./outputs/Alignments_S.fasta")
+
+DNA_alignment_high_S <- AlignSeqs(complexdfS_high, processors=12)
+DNA_alignment_high_staggered_S = StaggerAlignment(DNA_alignment_high_S, processors=12)
+writeXStringSet(DNA_alignment_high_staggered_S, file="./outputs/Alignments_high_staggered_S.fasta")
+
+###########
+pause()
+DNA_alignment_low_S <- AlignSeqs(complexdfS_low, processors=12)
+DNA_alignment_low_staggered_S = StaggerAlignment(DNA_alignment_low_S, processors=12)
+writeXStringSet(DNA_alignment_low_staggered_S, file="./outputs/Alignments_low_staggered_S.fasta")
+
+
+##########
+pause()
+DNA_alignment_OH <- AlignSeqs(NAreadsOH, processors=12)
+writeXStringSet(DNA_alignment_OH, file="./outputs/Alignments_OH.fasta")
+
+IUPAC_CODE_MAP # list of ambiguity codes for reference
+threshold = 0.05
+DNA_consensus_S <- ConsensusSequence(DNA_alignment_S,
+                  threshold = 0.05,
+                  ambiguity = TRUE,
+                  noConsensusChar = "+",
+                  minInformation = 1 - threshold,
+                  ignoreNonBases = FALSE,
+                  includeTerminalGaps = FALSE)
+DNA_consensus_S
 
